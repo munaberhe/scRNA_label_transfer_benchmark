@@ -1,0 +1,203 @@
+# Cell Type Label Transfer Benchmark on PBMC 3k
+
+This mini-project benchmarks three approaches for **cell type label transfer** in
+single-cell RNA-seq data using the classic **PBMC 3k** dataset from Scanpy.
+
+The goal is to simulate a realistic scenario where we have a **labelled reference
+dataset** and an **unlabelled query dataset**, and we want to transfer cluster / cell
+type labels from the reference to the query.
+
+The three methods compared are:
+
+1. **k-nearest neighbours (kNN) classifier** on PCA features (baseline)  
+2. **Scanpy `ingest`** label transfer, using a reference neighbour graph and UMAP  
+3. **RandomForest classifier** on PCA features  
+
+---
+
+## Dataset
+
+We use the built-in Scanpy dataset:
+
+- `scanpy.datasets.pbmc3k()`
+- 2,700 peripheral blood mononuclear cells (PBMCs)
+
+Standard pre-processing is applied:
+
+- gene filtering  
+- library-size normalisation  
+- log-transformation  
+- highly variable gene selection  
+- scaling  
+- PCA  
+- neighbour graph  
+- Leiden clustering (cluster labels used as pseudo “cell types”)
+
+The processed AnnData object is saved to:
+
+- `data_pbmc3k_processed.h5ad`
+
+A 50/50 **train/test split** of cells is then created and saved as:
+
+- `data_pbmc3k_splits.h5ad`
+
+with `adata.obs["split"]` indicating `"train"` vs `"test"`.
+
+---
+
+## Methods
+
+### 1. kNN classifier
+
+**Script:** `03_knn_classifier.py`
+
+- Features: PCA coordinates (`adata.obsm["X_pca"]`)  
+- Model: `sklearn.neighbors.KNeighborsClassifier` (k = 15)  
+- Train on `"train"` cells, evaluate on `"test"` cells  
+
+**Outputs**
+
+- Precision / recall / F1 classification report (printed to stdout)  
+- Confusion matrix printed as a table  
+- Confusion matrix figure saved as  
+  `figures/figures_knn_confusion_matrix.png` (or similar, depending on path)
+
+---
+
+### 2. Scanpy `ingest` label transfer
+
+**Script:** `04_ingest_label_transfer.py`
+
+- Reference set: cells with `split == "train"`  
+- Query set: cells with `split == "test"`  
+- The reference AnnData is given:
+  - PCA (`X_pca`)  
+  - a neighbour graph (`sc.pp.neighbors`)  
+  - a UMAP embedding (`sc.tl.umap`)  
+
+`sc.tl.ingest(query, ref, obs="leiden")` is used to:
+
+- transfer cluster labels from `ref.obs["leiden"]`  
+- map query cells into the reference UMAP embedding  
+
+The true labels for the query set are stored in `query.obs["leiden_true"]`
+**before** ingest overwrites `query.obs["leiden"]`.
+
+**Outputs**
+
+- Precision / recall / F1 classification report comparing  
+  `leiden_true` (ground truth) vs `leiden` (predicted)  
+- UMAP plots of the query set coloured by true vs predicted labels,
+  saved as `figures/umap_query_true_vs_pred.png`
+
+---
+
+### 3. RandomForest classifier
+
+**Script:** `05_random_forest_classifier.py`
+
+- Features: PCA coordinates (`adata.obsm["X_pca"]`)  
+- Model: `sklearn.ensemble.RandomForestClassifier` with:
+  - `n_estimators = 300`  
+  - `random_state = 42`  
+  - `n_jobs = -1`  
+
+Train on `"train"` cells, evaluate on `"test"` cells.
+
+**Outputs**
+
+- Classification report printed to stdout and saved as  
+  `rf_classification_report.txt`  
+- Confusion matrix printed as a table  
+- Confusion matrix figure saved as  
+  `figures/confusion_matrix_randomforest.png`
+
+---
+
+## Repository Structure
+
+Example layout after running all scripts:
+
+```text
+scRNA_label_transfer_benchmark/
+  ├─ 01_load_and_inspect.py          # Load PBMC 3k, preprocessing, clustering
+  ├─ 02_make_splits.py               # Create 50/50 train/test split
+  ├─ 03_knn_classifier.py            # kNN baseline classifier
+  ├─ 04_ingest_label_transfer.py     # Scanpy ingest-based label transfer
+  ├─ 05_random_forest_classifier.py  # RandomForest classifier
+  ├─ data_pbmc3k_processed.h5ad      # Preprocessed full dataset (generated)
+  ├─ data_pbmc3k_splits.h5ad         # Dataset with train/test split (generated)
+  ├─ rf_classification_report.txt    # RandomForest classification metrics (generated)
+  ├─ figures/
+  │    ├─ figures_knn_confusion_matrix.png
+  │    ├─ confusion_matrix_randomforest.png
+  │    └─ umap_query_true_vs_pred.png
+  └─ README.md
+## Setup
+
+```bash
+git clone <this-repo-url>
+cd scRNA_label_transfer_benchmark
+python -m venv .venv
+source .venv/bin/activate   # or use a conda env
+pip install -r requirements.txt
+
+## How To Run 
+
+python 01_load_and_inspect.py   # preprocess + cluster
+python 02_make_splits.py        # train/test split
+python 03_knn_classifier.py     # kNN baseline
+python 04_ingest_label_transfer.py
+python 05_random_forest_classifier.py
+
+## Results
+
+**kNN classifier**
+
+- Accuracy: 0.96  
+- Macro F1-score: 0.94  
+
+(from the classification report: `accuracy = 0.96`, `macro avg f1-score = 0.94`)
+
+---
+
+**Scanpy `ingest`**
+
+- Accuracy: 0.88  
+- Macro F1-score: 0.88  
+
+(from the classification report: `accuracy = 0.88`, `macro avg f1-score = 0.88`)
+
+---
+
+**RandomForest classifier**
+
+- Accuracy: 0.97  
+- Macro F1-score: 0.92  
+
+(from the classification report: `accuracy = 0.97`, `macro avg f1-score = 0.92`)
+
+## Discussion
+
+Overall, all three methods performed well on the PBMC 3k label-transfer task (accuracy ≥ 0.88), but they show different trade-offs.
+
+- **RandomForest** achieved the best overall performance  
+  - Accuracy: **0.97**, macro F1: **0.92**  
+  - Very strong on the major clusters (0–4), but performance drops on the smallest cluster (class 5; F1 = 0.67), suggesting some bias towards abundant cell types.
+
+- **kNN classifier** was a close second  
+  - Accuracy: **0.96**, macro F1: **0.94**  
+  - Slightly lower overall accuracy than RandomForest, but more balanced performance on the rare classes (e.g. class 5 F1 = 0.91), which is attractive when minority cell types are important.
+
+- **Scanpy `ingest`** provided a solid baseline for atlas-style label transfer  
+  - Accuracy: **0.88**, macro F1: **0.88**  
+  - Excellent recall for the dominant cluster (class 0 recall = 1.00) but noticeably lower recall for some other clusters (e.g. class 3 recall = 0.66), most likely reflecting limitations of the shared UMAP/neighbourhood structure for separating those populations.
+
+In practice:
+
+- **RandomForest** is a good choice when maximum accuracy on well-represented cell types is the priority.  
+- **kNN** may be preferable when a simple, transparent method with more balanced performance across rare cell types is desired.  
+- **Scanpy `ingest`** remains a convenient option when a well-annotated reference atlas and UMAP embedding already exist and computational simplicity is more important than peak accuracy.
+
+This benchmark is limited to a single dataset (PBMC 3k) and pseudo-cell types defined by Leiden clustering. Future extensions could include additional datasets, alternative classifiers (e.g. SVMs, scANVI, deep learning models), and runtime/memory profiling to give a fuller picture of method performance in real single-cell analysis workflows.
+

@@ -1,0 +1,12 @@
+# Python venv
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Data and generated files
+*.h5ad
+figures/
+rf_classification_report.txt
+
