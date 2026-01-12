@@ -1,17 +1,18 @@
 # Cell Type Label Transfer Benchmark on PBMC 3k
 
-This mini-project benchmarks three approaches for **cell type label transfer** in
+This mini-project benchmarks several approaches for **cell type label transfer** in
 single-cell RNA-seq data using the classic **PBMC 3k** dataset from Scanpy.
 
 The goal is to simulate a realistic scenario where we have a **labelled reference
 dataset** and an **unlabelled query dataset**, and we want to transfer cluster / cell
 type labels from the reference to the query.
 
-The three methods compared are:
+The methods compared are:
 
 1. **k-nearest neighbours (kNN) classifier** on PCA features (baseline)  
 2. **Scanpy `ingest`** label transfer, using a reference neighbour graph and UMAP  
 3. **RandomForest classifier** on PCA features  
+4. **SVM classifier** (RBF kernel) on PCA features  
 
 ---
 
@@ -111,6 +112,27 @@ Train on `"train"` cells, evaluate on `"test"` cells.
 
 ---
 
+### 4. SVM classifier
+
+**Script:** `06_svm_classifier.py`
+
+- Features: PCA coordinates (`adata.obsm["X_pca"]`)  
+- Model: `sklearn.svm.SVC` with:
+  - `kernel = "rbf"`  
+  - `C = 10.0`  
+  - `gamma = "scale"`  
+  - `random_state = 42`  
+
+Train on `"train"` cells, evaluate on `"test"` cells.
+
+**Outputs**
+
+- Classification report printed to stdout and saved as `svm_classification_report.txt`  
+- Confusion matrix printed as a table  
+- Confusion matrix figure saved as `figures/confusion_matrix_svm.png`
+
+---
+
 ## Repository Structure
 
 Example layout after running all scripts:
@@ -121,12 +143,15 @@ Example layout after running all scripts:
       ├─ 03_knn_classifier.py            # kNN baseline classifier
       ├─ 04_ingest_label_transfer.py     # Scanpy ingest-based label transfer
       ├─ 05_random_forest_classifier.py  # RandomForest classifier
+      ├─ 06_svm_classifier.py            # SVM classifier (RBF kernel)
       ├─ data_pbmc3k_processed.h5ad      # Preprocessed full dataset (generated)
       ├─ data_pbmc3k_splits.h5ad         # Dataset with train/test split (generated)
       ├─ rf_classification_report.txt    # RandomForest classification metrics (generated)
+      ├─ svm_classification_report.txt   # SVM classification metrics (generated)
       ├─ figures/
       │    ├─ figures_knn_confusion_matrix.png
       │    ├─ confusion_matrix_randomforest.png
+      │    ├─ confusion_matrix_svm.png
       │    └─ umap_query_true_vs_pred.png
       └─ README.md
 
@@ -137,24 +162,26 @@ Example layout after running all scripts:
 
 ## Setup
 
-1. **Clone the repository and move into it**
+1. **Clone and move into the repository**
 
    - `git clone <this-repo-url>`  
    - `cd scRNA_label_transfer_benchmark`
 
-2. **Create a Python environment**
+2. **Create and activate a Python environment**
 
-   - Option A – virtualenv  
-     - `python -m venv .venv`  
-     - `source .venv/bin/activate`  (Windows PowerShell: `.venv\Scripts\Activate.ps1`)  
+   Option A – `venv`:
 
-   - Option B – conda (recommended for Scanpy)  
-     - `conda create -n scrna-bench python=3.10 -y`  
-     - `conda activate scrna-bench`
+   - `python -m venv .venv`  
+   - `source .venv/bin/activate`  (Windows PowerShell: `.venv\Scripts\Activate.ps1`)
+
+   Option B – `conda` (recommended for Scanpy):
+
+   - `conda create -n scrna-bench python=3.10 -y`  
+   - `conda activate scrna-bench`
 
 3. **Install dependencies**
 
-   - `pip install scanpy anndata scikit-learn matplotlib pandas numpy igraph leidenalg`  
+   - `pip install scanpy anndata scikit-learn matplotlib pandas numpy igraph leidenalg`
 
    (Alternatively, install `scanpy` and its dependencies from `conda-forge`.)
 
@@ -182,13 +209,17 @@ Example layout after running all scripts:
 
    - `python 05_random_forest_classifier.py`
 
+6. **Run SVM classifier**
+
+   - `python 06_svm_classifier.py`
+
 All scripts are independent and can be re-run after modifying parameters.
 
 ---
 
 ## Results
 
-**kNN classifier**
+**kNN classifier (`03_knn_classifier.py`)**
 
 - Accuracy: **0.96**  
 - Macro F1-score: **0.94**  
@@ -197,7 +228,7 @@ All scripts are independent and can be re-run after modifying parameters.
 
 ---
 
-**Scanpy `ingest`**
+**Scanpy `ingest` (`04_ingest_label_transfer.py`)**
 
 - Accuracy: **0.88**  
 - Macro F1-score: **0.88**  
@@ -206,7 +237,7 @@ All scripts are independent and can be re-run after modifying parameters.
 
 ---
 
-**RandomForest classifier**
+**RandomForest classifier (`05_random_forest_classifier.py`)**
 
 - Accuracy: **0.97**  
 - Macro F1-score: **0.92**  
@@ -215,27 +246,44 @@ All scripts are independent and can be re-run after modifying parameters.
 
 ---
 
+**SVM classifier (`06_svm_classifier.py`)**
+
+- Accuracy: **0.98**  
+- Macro F1-score: **0.92**  
+
+(from the classification report: `accuracy = 0.98`, `macro avg f1-score = 0.92`)
+
+---
+
 ## Discussion
 
-Overall, all three methods performed well on the PBMC 3k label-transfer task (accuracy ≥ 0.88), but they show different trade-offs.
+Overall, all four methods perform very well on the PBMC 3k label-transfer task (accuracy ≥ 0.88), but they show different trade-offs.
 
-- **RandomForest** achieved the best overall performance  
-  - Accuracy: **0.97**, macro F1: **0.92**  
-  - Very strong on the major clusters (0–4), but performance drops on the smallest cluster (class 5; F1 = 0.67), suggesting some bias towards abundant cell types.
+- **RandomForest** and **SVM** achieve the strongest overall performance  
+  - RandomForest: accuracy **0.97**, macro F1 **0.92**  
+  - SVM: accuracy **0.98**, macro F1 **0.92**  
+  - Both models perform extremely well on the major clusters (0–4), but performance drops on the smallest cluster (class 5; F1 ≈ 0.67), suggesting some bias towards abundant cell types and challenges with very rare populations.
 
-- **kNN classifier** was a close second  
-  - Accuracy: **0.96**, macro F1: **0.94**  
-  - Slightly lower overall accuracy than RandomForest, but more balanced performance on the rare classes (e.g. class 5 F1 = 0.91), which is attractive when minority cell types are important.
+- **kNN classifier** is a simple but competitive baseline  
+  - Accuracy: **0.96**, macro F1 **0.94**  
+  - Slightly lower overall accuracy than SVM/RandomForest, but with balanced performance across clusters and very straightforward implementation.
 
-- **Scanpy `ingest`** provided a solid baseline for atlas-style label transfer  
-  - Accuracy: **0.88**, macro F1: **0.88**  
-  - Excellent recall for the dominant cluster (class 0 recall = 1.00) but noticeably lower recall for some other clusters (e.g. class 3 recall = 0.66), most likely reflecting limitations of the shared UMAP/neighbourhood structure for separating those populations.
+- **Scanpy `ingest`** provides a solid atlas-style label transfer baseline  
+  - Accuracy: **0.88**, macro F1 **0.88**  
+  - Excellent recall for the dominant cluster (class 0 recall = 1.00) but noticeably lower recall for some other clusters (e.g. class 3 recall = 0.66), likely reflecting limitations of the shared UMAP/neighbourhood structure for separating certain populations.
 
 In practice:
 
-- **RandomForest** is a good choice when maximum accuracy on well-represented cell types is the priority.  
-- **kNN** may be preferable when a simple, transparent method with more balanced performance across rare cell types is desired.  
-- **Scanpy `ingest`** remains a convenient option when a well-annotated reference atlas and UMAP embedding already exist and computational simplicity is more important than peak accuracy.
+- **SVM** and **RandomForest** are good choices when maximum accuracy on well-represented cell types is the priority.  
+- **kNN** may be preferable when a simple, transparent method with strong performance is desired.  
+- **Scanpy `ingest`** remains a convenient option when a well-annotated reference atlas and UMAP embedding already exist, and when integration into an existing Scanpy workflow is a priority.
 
-This benchmark is limited to a single dataset (PBMC 3k) and pseudo-cell types defined by Leiden clustering. Future extensions could include additional datasets, alternative classifiers (e.g. SVMs, scANVI, deep learning models), and runtime/memory profiling to give a fuller picture of method performance in real single-cell analysis workflows.
+This benchmark is currently limited to a single dataset (PBMC 3k) and pseudo-cell types defined by Leiden clustering. Future extensions could include:
+
+- Multiple datasets and true cell type annotations (e.g. CITE-seq, external PBMC datasets).  
+- Additional classifiers (e.g. logistic regression, simple neural networks, or deep generative models like scANVI).  
+- Runtime and memory profiling to understand trade-offs between accuracy and computational cost.  
+- Evaluation of robustness to batch effects and domain shifts, mimicking real label-transfer scenarios between different experiments or technologies.
+
+This project serves as a compact, reproducible example of a **single-cell label-transfer benchmark** and a useful portfolio piece demonstrating practical experience with Scanpy, scRNA-seq data, and machine learning model comparison.
 
